@@ -242,6 +242,10 @@ class Interface(object):
 		self.dlgRefineNew = uiRefine.RefineDialogNew()
 		self.dlgRefineNew.Hide()
 
+		# URL error popup dialog
+		self.urlPopupDialog = uiCommon.PopupDialog()
+		self.urlPopupDialog.Hide()
+
 	def __MakeHelpWindow(self):
 		self.wndHelp = uiHelp.HelpWindow()
 		self.wndHelp.LoadDialog()
@@ -337,12 +341,55 @@ class Interface(object):
 		self.__InitWhisper()
 		self.DRAGON_SOUL_IS_QUALIFIED = False
 
+	def __OnAcceptOpenURL(self, dialog):
+		"""Callback for accepting URL open"""
+		if hasattr(self, 'pendingURL') and self.pendingURL:
+			chat.OpenURL(self.pendingURL)
+			self.pendingURL = None
+		dialog.Close()
+
+	def __OnCancelOpenURL(self, dialog):
+		"""Callback for canceling URL open"""
+		if hasattr(self, 'pendingURL'):
+			self.pendingURL = None
+		dialog.Close()
+
 	def MakeHyperlinkTooltip(self, hyperlink):
 		tokens = hyperlink.split(":")
 		if tokens and len(tokens):
 			type = tokens[0]
 			if "item" == type:
 				self.hyperlinkItemTooltip.SetHyperlinkItem(tokens)
+			elif "url" == type:
+				# Reconstruct the URL (it may contain colons)
+				url = ":".join(tokens[1:])
+				# Check if URL is HTTP (unsafe) or HTTPS (safe)
+				url_lower = url.lower()
+				if url_lower.startswith("http://"):
+					# HTTP is unsafe - show error and don't open
+					self.urlPopupDialog.SetText("This link is unsafe and will not be opened.")
+					self.urlPopupDialog.Open()
+				elif url_lower.startswith("https://"):
+					# HTTPS is safe - show confirmation dialog
+					# Create a new QuestionDialog instance each time (like uishop.py does)
+					urlQuestionDialog = uiCommon.QuestionDialog()
+					
+					# Store URL in interface instance for closure
+					self.pendingURL = url
+					
+					# Set text first
+					urlQuestionDialog.SetText("This will open a link in a new window. Are you sure?")
+					
+					# Set events using lambda (like uishop.py does) - no ui.__mem_func__ needed
+					urlQuestionDialog.SetAcceptEvent(lambda: self.__OnAcceptOpenURL(urlQuestionDialog))
+					urlQuestionDialog.SetCancelEvent(lambda: self.__OnCancelOpenURL(urlQuestionDialog))
+					
+					# Open the dialog
+					urlQuestionDialog.Open()
+				else:
+					# URL doesn't start with http:// or https:// - treat as unsafe
+					self.urlPopupDialog.SetText("This link is unsafe and will not be opened.")
+					self.urlPopupDialog.Open()
 
 	## Make Windows & Dialogs
 	################################
@@ -494,6 +541,7 @@ class Interface(object):
 		del self.dlgSystem
 		del self.dlgPassword
 		del self.hyperlinkItemTooltip
+		del self.urlPopupDialog
 		del self.tooltipItem
 		del self.tooltipSkill
 		del self.wndMiniMap
